@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تشخیص عدد · Neural Digits</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+
+<style>
+:root{
+  --bg:#050510;
+  --card:rgba(20,20,35,.55);
+  --border:rgba(255,255,255,.08);
+  --text:#e5e7eb;
+  --text-dim:#9ca3af;
+  --accent1:#8b5cf6;
+  --accent2:#22d3ee;
+  --accent3:#f472b6;
+  --success:#22c55e;
+  --danger:#ef4444;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{
+  font-family:'Vazirmatn',system-ui,sans-serif;
+  color:var(--text);
+  background:var(--bg);
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- پس‌زمینه متحرک ---------- */
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:var(--bg)}
+.blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.45;will-change:transform}
+.blob1{width:520px;height:520px;background:#6d28d9;top:-140px;left:-120px;animation:float1 22s ease-in-out infinite}
+.blob2{width:420px;height:420px;background:#0891b2;bottom:-120px;right:-120px;animation:float2 26s ease-in-out infinite}
+.blob3{width:380px;height:380px;background:#db2777;top:45%;left:45%;animation:float3 30s ease-in-out infinite}
+@keyframes float1{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(220px,120px) scale(1.15)}66%{transform:translate(120px,320px) scale(.9)}}
+@keyframes float2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-220px,-160px) scale(1.25)}}
+@keyframes float3{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(calc(-50% + 120px),calc(-50% - 120px)) scale(1.1)}}
+
+/* ---------- چیدمان ---------- */
+.app{max-width:720px;margin:0 auto;padding:40px 20px 60px;min-height:100vh}
+
+/* ---------- هدر ---------- */
+.header{text-align:center;margin-bottom:32px;animation:fadeDown .7s cubic-bezier(.4,0,.2,1) both}
+.logo{width:64px;height:64px;margin:0 auto 18px;border-radius:18px;
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 12px 32px rgba(139,92,246,.45);
+  animation:pulseLogo 3s ease-in-out infinite}
+.logo svg{width:34px;height:34px;color:#fff}
+@keyframes pulseLogo{0%,100%{box-shadow:0 12px 32px rgba(139,92,246,.45)}50%{box-shadow:0 16px 44px rgba(34,211,238,.6)}}
+h1{
+  font-size:clamp(26px,5.5vw,38px);font-weight:800;letter-spacing:-.02em;margin-bottom:10px;
+  background:linear-gradient(135deg,#a78bfa 0%,#22d3ee 45%,#f472b6 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.subtitle{color:var(--text-dim);font-size:14px;letter-spacing:.02em}
+.subtitle span{color:var(--accent2);font-weight:600}
+
+/* ---------- کارت ---------- */
+.card{
+  background:var(--card);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border:1px solid var(--border);
+  border-radius:26px;
+  padding:28px;
+  box-shadow:0 24px 70px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+  animation:fadeUp .8s .15s cubic-bezier(.4,0,.2,1) both;
+  position:relative;overflow:hidden;
+}
+.card::before{
+  content:'';position:absolute;inset:0;pointer-events:none;border-radius:26px;
+  background:linear-gradient(135deg,rgba(139,92,246,.06),transparent 40%,rgba(34,211,238,.06));
+}
+
+/* ---------- Dropzone ---------- */
+.dropzone{
+  position:relative;
+  border:2px dashed rgba(167,139,250,.35);
+  border-radius:20px;
+  min-height:230px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  transition:all .35s cubic-bezier(.4,0,.2,1);
+  background:radial-gradient(circle at 50% 50%,rgba(167,139,250,.05),transparent 70%);
+  overflow:hidden;
+}
+.dropzone:hover,.dropzone.drag{
+  border-color:rgba(167,139,250,.85);
+  background:radial-gradient(circle at 50% 50%,rgba(167,139,250,.12),transparent 70%);
+  transform:translateY(-3px);
+  box-shadow:0 16px 50px rgba(167,139,250,.25);
+}
+.dropzone.drag{border-style:solid}
+.drop-content{text-align:center;padding:24px;pointer-events:none}
+.drop-icon{
+  width:56px;height:56px;margin:0 auto 14px;
+  color:var(--accent1);opacity:.9;
+  transition:transform .35s cubic-bezier(.4,0,.2,1);
+}
+.dropzone:hover .drop-icon{transform:translateY(-4px) scale(1.08)}
+.drop-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.drop-hint{font-size:12.5px;color:var(--text-dim)}
+.drop-hint kbd{
+  background:rgba(255,255,255,.08);padding:2px 8px;border-radius:6px;
+  font-family:inherit;font-size:11px;border:1px solid rgba(255,255,255,.1);
+}
+
+/* ---------- Preview ---------- */
+.preview{
+  position:relative;
+  border-radius:18px;
+  background:linear-gradient(135deg,#fafafa,#e5e7eb);
+  padding:16px;
+  min-height:180px;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+  animation:popIn .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+.preview canvas{max-width:100%;max-height:340px;display:block;border-radius:10px}
+.preview.scanning::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(34,211,238,.35),transparent);
+  animation:scan 1.2s linear infinite;
+  pointer-events:none;
+}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.clear-btn{
+  position:absolute;top:10px;left:10px;
+  width:34px;height:34px;border-radius:50%;
+  border:none;cursor:pointer;
+  background:rgba(0,0,0,.55);color:#fff;
+  font-size:18px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;backdrop-filter:blur(6px);
+}
+.clear-btn:hover{background:rgba(239,68,68,.9);transform:scale(1.1)}
+
+/* ---------- دکمه‌ها ---------- */
+.actions{display:grid;grid-template-columns:1fr 1.4fr;gap:12px;margin-top:20px}
+.btn{
+  padding:16px 24px;border:none;border-radius:16px;
+  font-family:inherit;font-size:15px;font-weight:600;
+  cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  position:relative;overflow:hidden;
+}
+.btn svg{width:18px;height:18px}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none !important;box-shadow:none !important}
+.btn-primary{
+  background:linear-gradient(135deg,var(--accent1),var(--accent2));
+  color:#fff;
+  box-shadow:0 10px 28px rgba(139,92,246,.45);
+}
+.btn-primary:hover:not(:disabled){
+  transform:translateY(-2px);
+  box-shadow:0 16px 38px rgba(139,92,246,.65);
+}
+.btn-primary:active:not(:disabled){transform:translateY(0) scale(.98)}
+.btn-primary::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,var(--accent2),var(--accent1));
+  opacity:0;transition:opacity .3s;
+}
+.btn-primary:hover::before{opacity:1}
+.btn-primary span,.btn-primary svg{position:relative;z-index:1}
+.btn-secondary{
+  background:rgba(255,255,255,.05);
+  color:var(--text);
+  border:1px solid rgba(255,255,255,.1);
+}
+.btn-secondary:hover:not(:disabled){background:rgba(255,255,255,.1);transform:translateY(-2px)}
+.btn.loading{pointer-events:none}
+.btn.loading .btn-label{opacity:.6}
+.btn.loading::after{
+  content:'';position:absolute;width:20px;height:20px;
+  border:2.5px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;
+  animation:spin .7s linear infinite;
+  left:20px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- نتیجه ---------- */
+.result{
+  margin-top:24px;padding:24px 20px;
+  border-radius:20px;
+  background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(34,211,238,.08));
+  border:1px solid rgba(139,92,246,.2);
+  text-align:center;
+}
+.result-label{
+  font-size:12.5px;color:var(--text-dim);font-weight:500;
+  margin-bottom:8px;letter-spacing:.05em;
+}
+.result-value{
+  font-family:'Courier New',ui-monospace,monospace;
+  font-size:clamp(44px,11vw,76px);
+  font-weight:800;letter-spacing:.08em;
+  min-height:1.2em;line-height:1.1;
+  font-variant-numeric:tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+  background:linear-gradient(135deg,#22d3ee,#a78bfa,#f472b6);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;
+}
+.result-value .placeholder{
+  -webkit-text-fill-color:#4b5563;
+  font-size:.8em;
+}
+.digit{
+  display:inline-block;
+  animation:digitPop .55s cubic-bezier(.68,-.55,.265,1.55) both;
+}
+@keyframes digitPop{
+  from{opacity:0;transform:translateY(-30px) scale(.4) rotateX(-90deg)}
+  to  {opacity:1;transform:translateY(0) scale(1) rotateX(0)}
+}
+
+/* ---------- فوتر ---------- */
+.footer{text-align:center;margin-top:28px;color:var(--text-dim);font-size:12px;
+  animation:fadeUp .9s .35s cubic-bezier(.4,0,.2,1) both}
+.footer .dot{display:inline-block;width:4px;height:4px;background:var(--accent2);
+  border-radius:50%;margin:0 8px;vertical-align:middle}
+
+/* ---------- Toast ---------- */
+.toast{
+  position:fixed;bottom:28px;left:50%;transform:translate(-50%,120%);
+  background:rgba(20,20,35,.95);backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.1);
+  padding:14px 24px;border-radius:14px;
+  color:var(--text);font-size:14px;font-weight:500;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);
+  transition:transform .4s cubic-bezier(.34,1.56,.64,1);
+  z-index:1000;max-width:min(90vw,420px);text-align:center;
+  pointer-events:none;
+}
+.toast.show{transform:translate(-50%,0)}
+.toast.success{border-color:rgba(34,197,94,.4);box-shadow:0 12px 40px rgba(34,197,94,.25)}
+.toast.error{border-color:rgba(239,68,68,.4);box-shadow:0 12px 40px rgba(239,68,68,.25)}
+
+/* ---------- Loader overlay ---------- */
+.loader-overlay{
+  position:fixed;inset:0;background:rgba(5,5,16,.75);
+  backdrop-filter:blur(8px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:999;gap:18px;
+}
+.loader-overlay[hidden]{display:none}
+.loader{
+  width:48px;height:48px;
+  border:3px solid rgba(139,92,246,.2);
+  border-top-color:var(--accent1);
+  border-right-color:var(--accent2);
+  border-radius:50%;
+  animation:spin .9s linear infinite;
+}
+.loader-overlay p{color:var(--text-dim);font-size:14px}
+
+/* ---------- انیمیشن‌های ورودی ---------- */
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes popIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+
+.hidden{display:none !important}
+
+/* ---------- ریسپانسیو ---------- */
+@media(max-width:520px){
+  .app{padding:24px 14px 40px}
+  .card{padding:20px;border-radius:22px}
+  .actions{grid-template-columns:1fr}
+  .dropzone{min-height:190px}
+}
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="blob blob1"></div>
+  <div class="blob blob2"></div>
+  <div class="blob blob3"></div>
+</div>
+
+<main class="app">
+  <header class="header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </div>
+    <h1>تشخیص عدد هوشمند</h1>
+    <p class="subtitle">شبکه عصبی عمیق <span>CRNN + CTC</span> · هر تعداد رقم</p>
+  </header>
+
+  <div class="card">
+    <div class="dropzone" id="dropzone">
+      <div class="drop-content">
+        <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p class="drop-title">تصویر را اینجا رها کنید</p>
+        <p class="drop-hint">یا کلیک کنید · یا <kbd>Ctrl</kbd> + <kbd>V</kbd> برای paste</p>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" hidden>
+    </div>
+
+    <div class="preview hidden" id="preview">
+      <canvas id="previewCanvas"></canvas>
+      <button class="clear-btn" id="clearBtn" title="حذف تصویر" aria-label="حذف">×</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="clearAction" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        <span class="btn-label">پاک کردن</span>
+      </button>
+      <button class="btn btn-primary" id="detectBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <span class="btn-label">تشخیص</span>
+      </button>
+    </div>
+
+    <div class="result">
+      <p class="result-label">نتیجه تشخیص</p>
+      <div class="result-value" id="resultValue">
+        <span class="placeholder">—</span>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+     
+  </footer>
+</main>
+
+<div class="toast" id="toast"></div>
+<div class="loader-overlay" id="loader" hidden>
+  <div class="loader"></div>
+  <p>در حال بارگذاری مدل...</p>
+</div>
+
+<script>
+'use strict';
+
+/* ============================================================
+   تنظیمات
+   ============================================================ */
+const IMG_H = 32;
+const IMG_W = 256;
+const BLANK = 0;
+const NUM_CLASSES = 11;
+const MAX_DIGITS = 8;
+const MODEL_URL = './crnn_digits.onnx';
+
+/* ============================================================
+   وضعیت
+   ============================================================ */
+let session = null;
+let modelReady = false;
+let currentImage = null;
+let previewScale = 1;
+
+const els = {
+  dropzone:      document.getElementById('dropzone'),
+  fileInput:     document.getElementById('fileInput'),
+  preview:       document.getElementById('preview'),
+  previewCanvas: document.getElementById('previewCanvas'),
+  clearBtn:      document.getElementById('clearBtn'),
+  clearAction:   document.getElementById('clearAction'),
+  detectBtn:     document.getElementById('detectBtn'),
+  resultValue:   document.getElementById('resultValue'),
+  loader:        document.getElementById('loader'),
+  toast:         document.getElementById('toast'),
+};
+
+/* ============================================================
+   Toast
+   ============================================================ */
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+  els.toast.textContent = msg;
+  els.toast.className = 'toast show ' + (type === 'info' ? '' : type);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 3200);
+}
+
+/* ============================================================
+   بارگذاری مدل ONNX
+   ============================================================ */
+async function loadModel() {
+  els.loader.hidden = false;
+  try {
+    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+    ort.env.wasm.numThreads = Math.min(navigator.hardwareConcurrency || 2, 4);
+
+    session = await ort.InferenceSession.create(MODEL_URL, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all',
+    });
+    modelReady = true;
+    updateDetectButton();
+    showToast('مدل با موفقیت بارگذاری شد ✓', 'success');
+  } catch (err) {
+    console.error('Model load error:', err);
+    showToast('خطا در بارگذاری مدل — فایل crnn_digits.onnx را کنار index.html بگذارید', 'error');
+  } finally {
+    els.loader.hidden = true;
+  }
+}
+
+/* ============================================================
+   پیش‌پردازش تصویر (برابر نسخه پایتون)
+   ============================================================ */
+function preprocessToTensor(imageBitmapOrCanvas, srcW, srcH) {
+  // ۱) رسم روی canvas موقت و خواندن پیکسل‌ها
+  const tmp = document.createElement('canvas');
+  tmp.width = srcW;
+  tmp.height = srcH;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true });
+  tctx.drawImage(imageBitmapOrCanvas, 0, 0, srcW, srcH);
+  const imgData = tctx.getImageData(0, 0, srcW, srcH).data;
+
+  // ۲) تبدیل به grayscale
+  const gray = new Float32Array(srcW * srcH);
+  let sum = 0;
+  for (let i = 0, j = 0; i < gray.length; i++, j += 4) {
+    const v = 0.299 * imgData[j] + 0.587 * imgData[j + 1] + 0.114 * imgData[j + 2];
+    gray[i] = v;
+    sum += v;
+  }
+  const mean = sum / gray.length;
+
+  // ۳) اگر پس‌زمینه تیره بود، معکوس کن
+  if (mean < 127) {
+    for (let i = 0; i < gray.length; i++) gray[i] = 255 - gray[i];
+  }
+
+  // ۴) آستانه‌گذاری و پیدا کردن bounding box
+  let mn = 255, mx = 0;
+  for (let i = 0; i < gray.length; i++) {
+    if (gray[i] < mn) mn = gray[i];
+    if (gray[i] > mx) mx = gray[i];
+  }
+  const thr = (mn + mx) / 2;
+
+  let xmin = srcW, xmax = -1, ymin = srcH, ymax = -1;
+  for (let y = 0; y < srcH; y++) {
+    const row = y * srcW;
+    for (let x = 0; x < srcW; x++) {
+      if (gray[row + x] < thr) {
+        if (x < xmin) xmin = x;
+        if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+      }
+    }
+  }
+  if (xmax < 0) return null; // تصویر خالی
+
+  const bw = xmax - xmin + 1;
+  const bh = ymax - ymin + 1;
+
+  // ۵) مقیاس (همان فرمول پایتون)
+  const scale = Math.min(22.0 / bh, (IMG_W - 8.0) / bw);
+  const nw = Math.max(1, Math.round(bw * scale));
+  const nh = Math.max(1, Math.round(bh * scale));
+
+  // ۶) نمونه‌برداری دوخطی از ناحیه crop و resize
+  const small = document.createElement('canvas');
+  small.width = nw; small.height = nh;
+  const sctx = small.getContext('2d');
+  const sd = sctx.createImageData(nw, nh);
+
+  for (let yy = 0; yy < nh; yy++) {
+    for (let xx = 0; xx < nw; xx++) {
+      const sx = xmin + ((xx + 0.5) * bw / nw) - 0.5;
+      const sy = ymin + ((yy + 0.5) * bh / nh) - 0.5;
+      const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(sx)));
+      const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(sy)));
+      const x1 = Math.min(srcW - 1, x0 + 1);
+      const y1 = Math.min(srcH - 1, y0 + 1);
+      const fx = Math.max(0, Math.min(1, sx - x0));
+      const fy = Math.max(0, Math.min(1, sy - y0));
+
+      const v00 = gray[y0 * srcW + x0];
+      const v10 = gray[y0 * srcW + x1];
+      const v01 = gray[y1 * srcW + x0];
+      const v11 = gray[y1 * srcW + x1];
+      const v = v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy)
+              + v01 * (1 - fx) * fy + v11 * fx * fy;
+
+      const idx = (yy * nw + xx) * 4;
+      sd.data[idx] = v; sd.data[idx + 1] = v; sd.data[idx + 2] = v; sd.data[idx + 3] = 255;
+    }
+  }
+  sctx.putImageData(sd, 0, 0);
+
+  // ۷) قرار دادن روی بوم سفید 32×256 (وسط‌چین)
+  const out = document.createElement('canvas');
+  out.width = IMG_W; out.height = IMG_H;
+  const octx = out.getContext('2d', { willReadFrequently: true });
+  octx.fillStyle = '#fff';
+  octx.fillRect(0, 0, IMG_W, IMG_H);
+  octx.drawImage(small, Math.floor((IMG_W - nw) / 2), Math.floor((IMG_H - nh) / 2));
+
+  // ۸) نرمال‌سازی به [-1, 1]
+  const od = octx.getImageData(0, 0, IMG_W, IMG_H).data;
+  const tensor = new Float32Array(IMG_H * IMG_W);
+  for (let i = 0; i < tensor.length; i++) {
+    const v = od[i * 4] / 255.0;
+    tensor[i] = (v - 0.5) / 0.5;
+  }
+  return tensor;
+}
+
+/* ============================================================
+   رمزگشایی CTC (greedy)
+   ============================================================ */
+function ctcGreedyDecode(logits, T, C) {
+  let result = '';
+  let prev = -1;
+  for (let t = 0; t < T; t++) {
+    let best = 0, bestVal = logits[t * C];
+    for (let c = 1; c < C; c++) {
+      const v = logits[t * C + c];
+      if (v > bestVal) { bestVal = v; best = c; }
+    }
+    if (best !== BLANK && best !== prev) {
+      result += String(best - 1);
+    }
+    prev = best;
+  }
+  return result;
+}
+
+/* ============================================================
+   اجرای inference
+   ============================================================ */
+async function detect() {
+  if (!modelReady || !currentImage) return;
+
+  els.detectBtn.classList.add('loading');
+  els.preview.classList.add('scanning');
+
+  try {
+    // اطمینان از رندر شدن انیمیشن
+    await new Promise(r => setTimeout(r, 60));
+
+    const { bitmap, width, height } = currentImage;
+    const tensor = preprocessToTensor(bitmap, width, height);
+
+    if (!tensor) {
+      showToast('هیچ رقمی در تصویر پیدا نشد', 'error');
+      return;
+    }
+
+    const input = new ort.Tensor('float32', tensor, [1, 1, IMG_H, IMG_W]);
+    const outputs = await session.run({ input });
+    const logits = outputs.logits.data;
+    const T = outputs.logits.dims[1];
+    const C = outputs.logits.dims[2];
+
+    const text = ctcGreedyDecode(logits, T, C);
+
+    if (text) {
+      showResult(text);
+      showToast(`تشخیص: ${text}`, 'success');
+    } else {
+      showResult('');
+      showToast('چیزی تشخیص داده نشد', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('خطا در تشخیص', 'error');
+  } finally {
+    els.detectBtn.classList.remove('loading');
+    els.preview.classList.remove('scanning');
+  }
+}
+
+/* ============================================================
+   نمایش نتیجه با انیمیشن
+   ============================================================ */
+function showResult(text) {
+  const el = els.resultValue;
+  el.innerHTML = '';
+  if (!text) {
+    const ph = document.createElement('span');
+    ph.className = 'placeholder';
+    ph.textContent = '—';
+    el.appendChild(ph);
+    return;
+  }
+  text.split('').forEach((d, i) => {
+    const span = document.createElement('span');
+    span.className = 'digit';
+    span.textContent = d;
+    span.style.animationDelay = (i * 90) + 'ms';
+    el.appendChild(span);
+  });
+}
+
+/* ============================================================
+   مدیریت تصویر
+   ============================================================ */
+async function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    showToast('فقط فایل تصویری مجاز است', 'error');
+    return;
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    setImage(bitmap, bitmap.width, bitmap.height);
+  } catch (err) {
+    console.error(err);
+    showToast('خطا در خواندن تصویر', 'error');
+  }
+}
+
+function setImage(bitmap, width, height) {
+  currentImage = { bitmap, width, height };
+  drawPreview(bitmap, width, height);
+
+  els.dropzone.classList.add('hidden');
+  els.preview.classList.remove('hidden');
+  els.preview.classList.remove('scanning');
+
+  els.clearAction.disabled = false;
+  updateDetectButton();
+  resetResult();
+}
+
+function drawPreview(source, w, h) {
+  const canvas = els.previewCanvas;
+  const maxW = 640, maxH = 340;
+  const scale = Math.min(maxW / w, maxH / h, 1);
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+}
+
+function resetImage() {
+  currentImage = null;
+  els.dropzone.classList.remove('hidden');
+  els.preview.classList.add('hidden');
+  els.clearAction.disabled = true;
+  updateDetectButton();
+  resetResult();
+}
+
+function resetResult() {
+  els.resultValue.innerHTML = '<span class="placeholder">—</span>';
+}
+
+function updateDetectButton() {
+  els.detectBtn.disabled = !(modelReady && currentImage);
+}
+
+/* ============================================================
+   رویدادها
+   ============================================================ */
+els.dropzone.addEventListener('click', () => els.fileInput.click());
+
+els.fileInput.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (file) handleFile(file);
+  e.target.value = '';
+});
+
+['dragenter', 'dragover'].forEach(evt =>
+  els.dropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    els.dropzone.classList.add('drag');
+  })
+);
+['dragleave', 'drop'].forEach(evt =>
+  els.dropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    els.dropzone.classList.remove('drag');
+  })
+);
+els.dropzone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer?.files?.[0];
+  if (file) handleFile(file);
+});
+
+document.addEventListener('paste', (e) => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) { handleFile(file); break; }
+    }
+  }
+});
+
+els.clearBtn.addEventListener('click', resetImage);
+els.clearAction.addEventListener('click', resetImage);
+els.detectBtn.addEventListener('click', detect);
+
+// اخطار در صورت اجرا از file://
+if (location.protocol === 'file:') {
+  setTimeout(() => {
+    showToast('برای کارکرد مدل، با python -m http.server اجرا کنید (نه file://)', 'error');
+  }, 1200);
+}
+
+/* ============================================================
+   شروع
+   ============================================================ */
+loadModel();
+</script>
+</body>
+</html>
